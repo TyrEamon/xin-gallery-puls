@@ -651,7 +651,6 @@ func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL strin
 		return nil, fmt.Errorf("pixiv pages: %w", err)
 	}
 
-	isPixivLinkIngest := strings.TrimSpace(sourceURL) != ""
 	if sourceURL == "" {
 		sourceURL = fmt.Sprintf("https://www.pixiv.net/artworks/%s", id)
 	}
@@ -693,7 +692,7 @@ func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL strin
 		return stats, nil
 	}
 
-	if isPixivLinkIngest && len(candidates) > 1 {
+	if len(candidates) > 1 {
 		a.ingestPixivAlbumCandidates(ctx, id, candidates, baseMeta, stats)
 		return stats, nil
 	}
