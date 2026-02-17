@@ -29,6 +29,11 @@ type Config struct {
 	BackupPollSeconds        int
 	BackupTaskTimeoutSeconds int
 	TwitterAPIDomain         string
+	TwitterAuthorEnabled     bool
+	TwitterAuthorUsers       []string
+	TwitterRSSSources        []string
+	TwitterAuthorIntervalMin int
+	TwitterAuthorFetchLimit  int
 	UmamiBaseURL             string
 	UmamiWebsiteIDFrontend   string
 	UmamiUsername            string
@@ -70,6 +75,11 @@ func Load() *Config {
 		BackupPollSeconds:        getEnvInt("BACKUP_POLL_SECONDS", 8),
 		BackupTaskTimeoutSeconds: getEnvInt("BACKUP_TASK_TIMEOUT_SECONDS", 120),
 		TwitterAPIDomain:         getEnvString("TWITTER_API_DOMAIN", "fxtwitter.com"),
+		TwitterAuthorEnabled:     getEnvBool("TWITTER_AUTHOR_ENABLED", false),
+		TwitterAuthorUsers:       parseStringList(os.Getenv("TWITTER_AUTHOR_USERS"), ","),
+		TwitterRSSSources:        parseStringList(os.Getenv("TWITTER_RSS_SOURCES"), ";"),
+		TwitterAuthorIntervalMin: getEnvInt("TWITTER_AUTHOR_INTERVAL_MINUTES", 60),
+		TwitterAuthorFetchLimit:  getEnvInt("TWITTER_AUTHOR_FETCH_LIMIT", 20),
 		UmamiBaseURL:             getEnvString("UMAMI_BASE_URL", ""),
 		UmamiWebsiteIDFrontend:   os.Getenv("UMAMI_WEBSITE_ID_FRONTEND"),
 		UmamiUsername:            os.Getenv("UMAMI_USERNAME"),
@@ -143,6 +153,16 @@ func Load() *Config {
 		cfg.OriginLinkTTLSeconds = 604800
 	}
 
+	if cfg.TwitterAuthorIntervalMin <= 0 {
+		cfg.TwitterAuthorIntervalMin = 60
+	}
+	if cfg.TwitterAuthorFetchLimit <= 0 {
+		cfg.TwitterAuthorFetchLimit = 20
+	}
+	if len(cfg.TwitterAuthorUsers) == 0 || len(cfg.TwitterRSSSources) == 0 {
+		cfg.TwitterAuthorEnabled = false
+	}
+
 	return cfg
 }
 
@@ -167,6 +187,25 @@ func parseIDSet(raw string) map[int64]struct{} {
 			continue
 		}
 		out[id] = struct{}{}
+	}
+	return out
+}
+
+func parseStringList(raw, sep string) []string {
+	parts := strings.Split(raw, sep)
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		if v == "" {
+			continue
+		}
+		key := strings.ToLower(v)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, v)
 	}
 	return out
 }

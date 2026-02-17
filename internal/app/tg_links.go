@@ -274,6 +274,22 @@ type yandePreparedPost struct {
 	Height       int
 }
 
+type twitterPhotoCandidate struct {
+	PageIndex int
+	PID       string
+	RawURL    string
+	ImageURL  string
+}
+
+type twitterPreparedPhoto struct {
+	Candidate    twitterPhotoCandidate
+	Data         []byte
+	OriginID     string
+	StorageMsgID int
+	Width        int
+	Height       int
+}
+
 func (a *App) ingestYandePosts(ctx context.Context, item supportedLink, posts []yandePost) (*ingestStats, error) {
 	stats := &ingestStats{Title: "Yandex"}
 	prepared := make([]yandePreparedPost, 0, len(posts))
@@ -550,6 +566,7 @@ func (a *App) ingestTwitterTweet(ctx context.Context, tweetID, sourceURL string)
 	}
 	stats := &ingestStats{Title: title}
 
+	photoCandidates := make([]twitterPhotoCandidate, 0, len(photos))
 	for i, rawURL := range photos {
 		pid := fmt.Sprintf("twitter_%s_p%d", tweetID, i)
 		if blocked, err := a.DB.IsBlocked(ctx, pid); err == nil && blocked {
@@ -563,31 +580,43 @@ func (a *App) ingestTwitterTweet(ctx context.Context, tweetID, sourceURL string)
 			continue
 		}
 
-		imgURL := buildTwitterImageURL(rawURL)
-		imgData, err := downloadWithHeaders(ctx, imgURL, "https://x.com/")
-		if err != nil {
-			stats.Failed++
-			log.Printf("Twitter download failed pid=%s err=%v", pid, err)
-			continue
-		}
+		photoCandidates = append(photoCandidates, twitterPhotoCandidate{
+			PageIndex: i,
+			PID:       pid,
+			RawURL:    rawURL,
+			ImageURL:  buildTwitterImageURL(rawURL),
+		})
+	}
 
-		meta := baseMeta
-		meta.ID = pid
-		meta.CreatedAt = time.Now().Unix()
-
-		img, err := a.publishImage(ctx, imgData, meta)
-		if err != nil {
-			stats.Failed++
-			log.Printf("Twitter publish failed pid=%s err=%v", pid, err)
-		} else {
-			stats.Downloaded++
-			if stats.FirstID == "" {
-				stats.FirstID = pid
+	if len(photoCandidates) > 1 {
+		a.ingestTwitterPhotoAlbum(ctx, tweetID, photoCandidates, baseMeta, stats)
+	} else {
+		for _, candidate := range photoCandidates {
+			imgData, err := downloadWithHeaders(ctx, candidate.ImageURL, "https://x.com/")
+			if err != nil {
+				stats.Failed++
+				log.Printf("Twitter download failed pid=%s err=%v", candidate.PID, err)
+				continue
 			}
-			log.Printf("Twitter stored pid=%s size=%dx%d", pid, img.Width, img.Height)
-		}
 
-		time.Sleep(1500 * time.Millisecond)
+			meta := baseMeta
+			meta.ID = candidate.PID
+			meta.CreatedAt = time.Now().Unix()
+
+			img, err := a.publishImage(ctx, imgData, meta)
+			if err != nil {
+				stats.Failed++
+				log.Printf("Twitter publish failed pid=%s err=%v", candidate.PID, err)
+			} else {
+				stats.Downloaded++
+				if stats.FirstID == "" {
+					stats.FirstID = candidate.PID
+				}
+				log.Printf("Twitter stored pid=%s size=%dx%d", candidate.PID, img.Width, img.Height)
+			}
+
+			time.Sleep(1500 * time.Millisecond)
+		}
 	}
 
 	for i, item := range motions {
@@ -622,6 +651,167 @@ func (a *App) ingestTwitterTweet(ctx context.Context, tweetID, sourceURL string)
 	}
 
 	return stats, nil
+}
+
+func chunkTwitterPhotoCandidates(items []twitterPhotoCandidate, size int) [][]twitterPhotoCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	if size <= 0 {
+		size = maxPixivAlbumGroup
+	}
+	out := make([][]twitterPhotoCandidate, 0, (len(items)+size-1)/size)
+	for start := 0; start < len(items); start += size {
+		end := start + size
+		if end > len(items) {
+			end = len(items)
+		}
+		chunk := make([]twitterPhotoCandidate, end-start)
+		copy(chunk, items[start:end])
+		out = append(out, chunk)
+	}
+	return out
+}
+
+func (a *App) ingestTwitterPhotoAlbum(ctx context.Context, tweetID string, candidates []twitterPhotoCandidate, baseMeta imagePublishMeta, stats *ingestStats) {
+	groups := chunkTwitterPhotoCandidates(candidates, maxPixivAlbumGroup)
+	for groupIdx, group := range groups {
+		prepared := make([]twitterPreparedPhoto, 0, len(group))
+		for _, c := range group {
+			imgData, err := downloadWithHeaders(ctx, c.ImageURL, "https://x.com/")
+			if err != nil {
+				stats.Failed++
+				log.Printf("Twitter download failed pid=%s err=%v", c.PID, err)
+				continue
+			}
+
+			originID, storageMsgID, err := a.TG.SendOriginDocument(ctx, imgData, "Original")
+			if err != nil {
+				stats.Failed++
+				log.Printf("Twitter origin send failed pid=%s err=%v", c.PID, err)
+				continue
+			}
+
+			width, height := detectImageSize(imgData)
+			prepared = append(prepared, twitterPreparedPhoto{
+				Candidate:    c,
+				Data:         imgData,
+				OriginID:     originID,
+				StorageMsgID: storageMsgID,
+				Width:        width,
+				Height:       height,
+			})
+			time.Sleep(1200 * time.Millisecond)
+		}
+		if len(prepared) == 0 {
+			continue
+		}
+
+		groupCaption := ""
+		isLastGroup := groupIdx == len(groups)-1
+		if isLastGroup {
+			groupCaption = buildPreviewCaption(normalizePublishMeta(baseMeta))
+		}
+
+		previewItems := make([]telegram.PreviewMedia, 0, len(prepared))
+		for _, p := range prepared {
+			previewItems = append(previewItems, telegram.PreviewMedia{
+				Data:     p.Data,
+				Filename: fmt.Sprintf("%s_preview.jpg", p.Candidate.PID),
+				Width:    p.Width,
+				Height:   p.Height,
+			})
+		}
+
+		previewResults, err := a.TG.SendPreviewMediaGroup(ctx, previewItems, groupCaption)
+		if err != nil {
+			log.Printf("Twitter media group failed tweet=%s group=%d err=%v fallback=single_preview", tweetID, groupIdx+1, err)
+			fallbackPrepared := make([]twitterPreparedPhoto, 0, len(prepared))
+			fallbackPreview := make([]telegram.PreviewSendResult, 0, len(prepared))
+			for i, p := range prepared {
+				caption := ""
+				if i == 0 {
+					caption = groupCaption
+				}
+				res, sendErr := a.TG.SendPreviewPhoto(ctx, p.Data, caption)
+				if sendErr != nil {
+					stats.Failed++
+					log.Printf("Twitter fallback preview failed pid=%s err=%v", p.Candidate.PID, sendErr)
+					continue
+				}
+				fallbackPrepared = append(fallbackPrepared, p)
+				fallbackPreview = append(fallbackPreview, res)
+			}
+			prepared = fallbackPrepared
+			previewResults = fallbackPreview
+		}
+
+		if len(prepared) == 0 || len(previewResults) == 0 {
+			continue
+		}
+		if len(prepared) != len(previewResults) {
+			limit := len(prepared)
+			if len(previewResults) < limit {
+				limit = len(previewResults)
+			}
+			prepared = prepared[:limit]
+			previewResults = previewResults[:limit]
+		}
+
+		discussionMsgID := 0
+		if isLastGroup {
+			anchorMeta := baseMeta
+			anchorMeta.ID = prepared[0].Candidate.PID
+			originLinks := make([]discussionOriginLink, 0, len(prepared))
+			for i, page := range prepared {
+				originLinks = append(originLinks, discussionOriginLink{
+					ImageID:      page.Candidate.PID,
+					OriginID:     page.OriginID,
+					StorageMsgID: page.StorageMsgID,
+					Label:        fmt.Sprintf("??%d", i+1),
+				})
+			}
+			discussionMsgID = a.sendDiscussionCommentWithOrigins(ctx, normalizePublishMeta(anchorMeta), previewResults[0].PublishMsgID, originLinks)
+		}
+
+		for i, p := range prepared {
+			meta := baseMeta
+			meta.ID = p.Candidate.PID
+			meta.CreatedAt = time.Now().Unix()
+
+			width := previewResults[i].Width
+			height := previewResults[i].Height
+			if width <= 0 {
+				width = p.Width
+			}
+			if height <= 0 {
+				height = p.Height
+			}
+
+			result := telegram.SendResult{
+				PreviewID:    previewResults[i].PreviewID,
+				OriginID:     p.OriginID,
+				PublishMsgID: previewResults[i].PublishMsgID,
+				StorageMsgID: p.StorageMsgID,
+				Width:        width,
+				Height:       height,
+			}
+
+			img, persistErr := a.persistPublishedImage(ctx, normalizePublishMeta(meta), result, discussionMsgID)
+			if persistErr != nil {
+				stats.Failed++
+				log.Printf("Twitter persist failed pid=%s err=%v", p.Candidate.PID, persistErr)
+				continue
+			}
+			stats.Downloaded++
+			if stats.FirstID == "" {
+				stats.FirstID = img.ID
+			}
+			log.Printf("Twitter stored pid=%s size=%dx%d", p.Candidate.PID, img.Width, img.Height)
+		}
+
+		time.Sleep(1500 * time.Millisecond)
+	}
 }
 
 func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL string) (*ingestStats, error) {

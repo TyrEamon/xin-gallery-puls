@@ -85,6 +85,12 @@ Twitter link ingest caption style:
 ### Other integrations
 
 - `TWITTER_API_DOMAIN` (default `fxtwitter.com`)
+- `TWITTER_AUTHOR_ENABLED` (`true/false`, default `false`)
+- `TWITTER_AUTHOR_USERS` (comma-separated usernames, e.g. `LIMU838,kasuga_iz`)
+- `TWITTER_RSS_SOURCES` (semicolon-separated templates, supports `{user}`)
+  - example: `https://rsshubi.zeabur.app/twitter/user/{user}/includeRts=0&includeReplies=0&count=20`
+- `TWITTER_AUTHOR_INTERVAL_MINUTES` (default `60`)
+- `TWITTER_AUTHOR_FETCH_LIMIT` (default `20`)
 - `UMAMI_BASE_URL`
 - `UMAMI_WEBSITE_ID_FRONTEND`
 - `UMAMI_USERNAME`
@@ -210,4 +216,5 @@ Admin APIs:
 - Random image API returns preview only by design.
 - `/image/{file_id}` is long-cache friendly (`max-age=31536000, immutable`).
 - Keep only one bot instance to avoid Telegram `getUpdates 409 conflict`.
+- Twitter author crawler uses RSS source + existing Twitter single-link ingest flow; state key format: `twitter_author_last_<username>`.
 - If token/password leaked, rotate immediately.

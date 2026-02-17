@@ -105,6 +105,7 @@ func main() {
 	defer stop()
 
 	application.StartPixivCrawler(ctx)
+	application.StartTwitterAuthorCrawler(ctx)
 	backupSvc.Start(ctx)
 
 	mux := http.NewServeMux()
