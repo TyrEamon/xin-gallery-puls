@@ -18,9 +18,9 @@
             --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
             --accent: #2563eb;
             --accent-weak: rgba(37, 99, 235, 0.18);
-            --skeleton-base: rgba(255, 255, 255, 0.42);
-            --skeleton-shine: rgba(255, 255, 255, 0.78);
-            --media-wash: rgba(255, 255, 255, 0.14);
+            --skeleton-base: rgba(255, 255, 255, 0.30);
+            --skeleton-shine: rgba(255, 255, 255, 0.56);
+            --media-wash: rgba(255, 255, 255, 0.10);
             --cols: 4;
             --grid-gap: 16px;
         }
@@ -34,9 +34,9 @@
             --card-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
             --accent: #93c5fd;
             --accent-weak: rgba(147, 197, 253, 0.18);
-            --skeleton-base: rgba(255, 255, 255, 0.08);
-            --skeleton-shine: rgba(255, 255, 255, 0.18);
-            --media-wash: rgba(255, 255, 255, 0.04);
+            --skeleton-base: rgba(255, 255, 255, 0.07);
+            --skeleton-shine: rgba(255, 255, 255, 0.14);
+            --media-wash: rgba(255, 255, 255, 0.03);
         }
 
         * { box-sizing: border-box; }
@@ -253,7 +253,7 @@
                     var(--skeleton-base) 62%,
                     transparent 100%);
             background-size: 220% 100%;
-            animation: media-shimmer 1.7s linear infinite;
+            animation: media-shimmer 2.2s linear infinite;
         }
         .ratio-box::after {
             background: radial-gradient(circle at 30% 24%, var(--media-wash), transparent 52%);
@@ -266,16 +266,14 @@
             object-fit: cover;
             opacity: 0;
             visibility: hidden;
-            filter: blur(12px) saturate(0.92);
-            transform: scale(1.04);
-            transition: opacity 0.45s ease, transform 0.35s ease, filter 0.35s ease, visibility 0s linear 0.45s;
+            transform: scale(1.015);
+            transition: opacity 0.38s ease, transform 0.24s ease, visibility 0s linear 0.38s;
         }
         .ratio-box img[data-loaded="true"] {
             opacity: 1;
             visibility: visible;
-            filter: none;
             transform: scale(1);
-            transition: opacity 0.45s ease, transform 0.28s ease, filter 0.28s ease;
+            transition: opacity 0.38s ease, transform 0.22s ease;
         }
         .grid-item.content-loaded .ratio-box::before,
         .grid-item.content-loaded .ratio-box::after {
