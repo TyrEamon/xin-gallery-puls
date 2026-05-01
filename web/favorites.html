@@ -18,6 +18,9 @@
             --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
             --accent: #2563eb;
             --accent-weak: rgba(37, 99, 235, 0.18);
+            --skeleton-base: rgba(255, 255, 255, 0.42);
+            --skeleton-shine: rgba(255, 255, 255, 0.78);
+            --media-wash: rgba(255, 255, 255, 0.14);
             --cols: 4;
             --grid-gap: 16px;
         }
@@ -31,6 +34,9 @@
             --card-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
             --accent: #93c5fd;
             --accent-weak: rgba(147, 197, 253, 0.18);
+            --skeleton-base: rgba(255, 255, 255, 0.08);
+            --skeleton-shine: rgba(255, 255, 255, 0.18);
+            --media-wash: rgba(255, 255, 255, 0.04);
         }
 
         * { box-sizing: border-box; }
@@ -225,7 +231,32 @@
         .ratio-box {
             position: relative;
             width: 100%;
-            background: rgba(0,0,0,0.04);
+            overflow: hidden;
+            background:
+                linear-gradient(180deg, var(--media-wash), transparent 65%),
+                rgba(0,0,0,0.04);
+        }
+        .ratio-box::before,
+        .ratio-box::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            transition: opacity 0.35s ease;
+        }
+        .ratio-box::before {
+            background:
+                linear-gradient(110deg,
+                    transparent 0%,
+                    var(--skeleton-base) 38%,
+                    var(--skeleton-shine) 50%,
+                    var(--skeleton-base) 62%,
+                    transparent 100%);
+            background-size: 220% 100%;
+            animation: media-shimmer 1.7s linear infinite;
+        }
+        .ratio-box::after {
+            background: radial-gradient(circle at 30% 24%, var(--media-wash), transparent 52%);
         }
         .ratio-box img {
             position: absolute;
@@ -234,11 +265,25 @@
             height: 100%;
             object-fit: cover;
             opacity: 0;
-            transform: scale(1);
-            transition: opacity 0.4s, transform 0.25s ease;
+            visibility: hidden;
+            filter: blur(12px) saturate(0.92);
+            transform: scale(1.04);
+            transition: opacity 0.45s ease, transform 0.35s ease, filter 0.35s ease, visibility 0s linear 0.45s;
         }
         .ratio-box img[data-loaded="true"] {
             opacity: 1;
+            visibility: visible;
+            filter: none;
+            transform: scale(1);
+            transition: opacity 0.45s ease, transform 0.28s ease, filter 0.28s ease;
+        }
+        .grid-item.content-loaded .ratio-box::before,
+        .grid-item.content-loaded .ratio-box::after {
+            opacity: 0;
+        }
+        @keyframes media-shimmer {
+            from { background-position: 200% 0; }
+            to { background-position: -20% 0; }
         }
 
         .card-overlay {

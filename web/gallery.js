@@ -172,20 +172,38 @@
     rootMargin: '200px 0px',
     threshold: 0,
     loaded: function(el) {
-      const onImgLoad = function() {
-        el.setAttribute('data-loaded', true);
-        const item = el.closest('.grid-item');
-        if (item) {
-          item.classList.add('content-loaded');
-          const gridType = item.getAttribute('data-grid');
-          if (gridType && masonryInstances[gridType]) {
-            masonryInstances[gridType].layout();
-          }
+      const revealWhenDecoded = function() {
+        if (el.getAttribute('data-loaded') === 'true') {
+          return;
         }
+        const finalize = function() {
+          el.setAttribute('data-loaded', true);
+          const item = el.closest('.grid-item');
+          if (item) {
+            item.classList.add('content-loaded');
+            const gridType = item.getAttribute('data-grid');
+            if (gridType && masonryInstances[gridType]) {
+              masonryInstances[gridType].layout();
+            }
+          }
+        };
+
+        if (typeof el.decode === 'function') {
+          el.decode().catch(function() {
+            // Some browsers reject decode() for cached or cross-origin images.
+          }).finally(finalize);
+          return;
+        }
+
+        finalize();
+      };
+
+      const onImgLoad = function() {
+        revealWhenDecoded();
       };
 
       if (el.complete && el.naturalHeight !== 0) {
-        onImgLoad();
+        revealWhenDecoded();
       } else {
         el.onload = onImgLoad;
       }
@@ -255,6 +273,8 @@
     img.className = 'lozad';
     img.setAttribute('data-src', displayURL);
     img.setAttribute('alt', (item.title || 'image') + '-' + (idx + 1));
+    img.loading = 'lazy';
+    img.decoding = 'async';
     if (originViewURL && previewURL && originViewURL !== previewURL) {
       img.addEventListener('error', function() {
         if (img.dataset.fallbackTried === '1') {

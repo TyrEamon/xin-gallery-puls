@@ -146,7 +146,6 @@ func (s *Service) Start(ctx context.Context) {
 	for i := 0; i < s.cfg.Workers; i++ {
 		go s.worker(ctx, i+1)
 	}
-	go s.healthLoop(ctx)
 
 	log.Printf("[BACKUP] worker started (workers=%d, retry_max=%d, base_path=%s)", s.cfg.Workers, s.cfg.RetryMax, s.cfg.BasePath)
 }
@@ -344,19 +343,6 @@ func trimErr(msg string, max int) string {
 		return msg
 	}
 	return msg[:max]
-}
-
-func (s *Service) healthLoop(ctx context.Context) {
-	ticker := time.NewTicker(90 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			_ = s.checkHealth(ctx)
-		}
-	}
 }
 
 func (s *Service) checkHealth(ctx context.Context) error {
