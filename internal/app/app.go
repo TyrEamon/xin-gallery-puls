@@ -234,14 +234,14 @@ func (a *App) crawlPixivOnce(ctx context.Context) {
 		maxPages,
 	)
 
-	var err error
+	var crawlErr error
 	if order == "asc" {
-		err = a.crawlPixivAsc(ctx, maxPages)
+		crawlErr = a.crawlPixivAsc(ctx, maxPages)
 	} else {
-		err = a.crawlPixivDesc(ctx, maxPages)
+		crawlErr = a.crawlPixivDesc(ctx, maxPages)
 	}
-	if err != nil {
-		log.Printf("Pixiv crawl failed: %v", err)
+	if crawlErr != nil {
+		log.Printf("Pixiv crawl failed: %v", crawlErr)
 		log.Println("Pixiv crawl finished")
 		return
 	}
