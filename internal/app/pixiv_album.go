@@ -44,7 +44,7 @@ func chunkPixivCandidates(items []pixivPageCandidate, size int) [][]pixivPageCan
 	return out
 }
 
-func (a *App) ingestPixivAlbumCandidates(ctx context.Context, artworkID string, candidates []pixivPageCandidate, baseMeta imagePublishMeta, stats *ingestStats) {
+func (a *App) ingestPixivAlbumCandidates(ctx context.Context, artworkID string, candidates []pixivPageCandidate, baseMeta imagePublishMeta, stats *ingestStats) error {
 	groups := chunkPixivCandidates(candidates, maxPixivAlbumGroup)
 	for groupIdx, group := range groups {
 		prepared := make([]pixivPreparedPage, 0, len(group))
@@ -169,7 +169,7 @@ func (a *App) ingestPixivAlbumCandidates(ctx context.Context, artworkID string, 
 			if persistErr != nil {
 				stats.Failed++
 				log.Printf("Pixiv persist failed pid=%s err=%v", p.Candidate.PID, persistErr)
-				continue
+				return fmt.Errorf("%w: persist image %s: %v", errPixivCrawlStop, p.Candidate.PID, persistErr)
 			}
 
 			stats.Downloaded++
@@ -181,4 +181,5 @@ func (a *App) ingestPixivAlbumCandidates(ctx context.Context, artworkID string, 
 
 		time.Sleep(2 * time.Second)
 	}
+	return nil
 }

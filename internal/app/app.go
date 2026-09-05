@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -15,6 +16,10 @@ import (
 
 	"github.com/go-telegram/bot/models"
 )
+
+// errPixivCrawlStop marks a failure that must stop the Pixiv crawl. Treating
+// a failed duplicate check as "not found" can republish an entire library.
+var errPixivCrawlStop = errors.New("pixiv crawl must stop")
 
 type App struct {
 	Cfg   *config.Config
@@ -208,10 +213,12 @@ func (a *App) crawlPixivOnce(ctx context.Context) {
 	if order == "" {
 		order = "desc"
 	}
-	bootstrapDone := false
-	if val, ok, err := a.DB.GetCrawlerState(ctx, pixivBootstrapStateKey); err == nil && ok && val == "1" {
-		bootstrapDone = true
+	val, ok, err := a.DB.GetCrawlerState(ctx, pixivBootstrapStateKey)
+	if err != nil {
+		log.Printf("Pixiv crawl paused: cannot read bootstrap state: %v", err)
+		return
 	}
+	bootstrapDone := ok && val == "1"
 	maxPages := a.resolvePixivMaxPages(bootstrapDone)
 	mode := "bootstrap"
 	if bootstrapDone {
@@ -283,7 +290,11 @@ func (a *App) crawlPixivDesc(ctx context.Context, maxPages int) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			a.processPixivID(ctx, id)
+			if err := a.processPixivID(ctx, id); err != nil {
+				if errors.Is(err, errPixivCrawlStop) {
+					return err
+				}
+			}
 		}
 
 		page++
@@ -327,21 +338,26 @@ func (a *App) crawlPixivAsc(ctx context.Context, maxPages int) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		a.processPixivID(ctx, allIDs[i])
+		if err := a.processPixivID(ctx, allIDs[i]); err != nil {
+			if errors.Is(err, errPixivCrawlStop) {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func (a *App) processPixivID(ctx context.Context, id string) {
+func (a *App) processPixivID(ctx context.Context, id string) error {
 	log.Printf("Pixiv processing artwork id=%s", id)
 
 	stats, err := a.ingestPixivArtwork(ctx, id, "")
 	if err != nil {
 		log.Printf("Pixiv artwork failed id=%s err=%v", id, err)
-		return
+		return err
 	}
 
 	log.Printf("Pixiv artwork done id=%s title=%q downloaded=%d skipped=%d failed=%d", id, stats.Title, stats.Downloaded, stats.Skipped, stats.Failed)
+	return nil
 }
 
 func shouldStopPageLoop(page, offset, total, maxPages int) bool {

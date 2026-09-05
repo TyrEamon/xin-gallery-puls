@@ -816,10 +816,18 @@ func (a *App) ingestTwitterPhotoAlbum(ctx context.Context, tweetID string, candi
 
 func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL string) (*ingestStats, error) {
 	firstPageID := fmt.Sprintf("pixiv_%s_p0", id)
-	if blocked, err := a.DB.IsBlocked(ctx, firstPageID); err == nil && blocked {
+	blocked, err := a.DB.IsBlocked(ctx, firstPageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: check blocklist for %s: %v", errPixivCrawlStop, firstPageID, err)
+	}
+	if blocked {
 		return &ingestStats{Title: id, Skipped: 1}, nil
 	}
-	if exists, _ := a.DB.Exists(ctx, firstPageID); exists {
+	exists, err := a.DB.Exists(ctx, firstPageID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: check image %s: %v", errPixivCrawlStop, firstPageID, err)
+	}
+	if exists {
 		return &ingestStats{Title: id, Skipped: 1}, nil
 	}
 
@@ -859,12 +867,20 @@ func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL strin
 	candidates := make([]pixivPageCandidate, 0, len(pages))
 	for i, p := range pages {
 		pid := fmt.Sprintf("pixiv_%s_p%d", id, i)
-		if blocked, err := a.DB.IsBlocked(ctx, pid); err == nil && blocked {
+		blocked, err := a.DB.IsBlocked(ctx, pid)
+		if err != nil {
+			return nil, fmt.Errorf("%w: check blocklist for %s: %v", errPixivCrawlStop, pid, err)
+		}
+		if blocked {
 			stats.Skipped++
 			log.Printf("Pixiv skip page pid=%s reason=blocked", pid)
 			continue
 		}
-		if exists, _ := a.DB.Exists(ctx, pid); exists {
+		exists, err := a.DB.Exists(ctx, pid)
+		if err != nil {
+			return nil, fmt.Errorf("%w: check image %s: %v", errPixivCrawlStop, pid, err)
+		}
+		if exists {
 			stats.Skipped++
 			log.Printf("Pixiv skip page pid=%s reason=already_exists", pid)
 			continue
@@ -883,7 +899,9 @@ func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL strin
 	}
 
 	if len(candidates) > 1 {
-		a.ingestPixivAlbumCandidates(ctx, id, candidates, baseMeta, stats)
+		if err := a.ingestPixivAlbumCandidates(ctx, id, candidates, baseMeta, stats); err != nil {
+			return stats, err
+		}
 		return stats, nil
 	}
 
@@ -903,6 +921,10 @@ func (a *App) ingestPixivArtwork(ctx context.Context, id string, sourceURL strin
 		if err != nil {
 			stats.Failed++
 			log.Printf("Pixiv publish failed pid=%s err=%v", c.PID, err)
+			// A publish may have reached Telegram before its D1 record failed.
+			// Stop the crawl so the next scheduled run cannot fan this into
+			// hundreds of duplicate messages while the failure is unresolved.
+			return stats, fmt.Errorf("%w: publish image %s: %v", errPixivCrawlStop, c.PID, err)
 		} else {
 			stats.Downloaded++
 			if stats.FirstID == "" {
